@@ -1,0 +1,14 @@
+{
+  "name": "rhymix-stitch-agent",
+  "version": "1.0.0",
+  "description": "Stitch 디자인 생성 → Rhymix CMS 배포를 채팅으로 처리하는 자동화 에이전트 (설정 기반, 외부 공유 가능)",
+  "main": "bridge-server.cjs",
+  "scripts": {
+    "start": "node bridge-server.cjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "basic-ftp": "^5.0.0",
+    "dotenv": "^16.4.0"
+  }
+}

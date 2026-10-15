@@ -1,0 +1,80 @@
+# Rhymix Stitch 자동화 에이전트
+
+채팅창에 한 줄로 설명을 입력하면, Stitch로 디자인 시안을 만들고 확인을 받은 뒤 Rhymix CMS 사이트에 배포까지 처리하는 자동화 에이전트입니다.
+
+```
+사용자: "동아리 소개 게시판 만들어줘"
+  ↓
+에이전트: Stitch로 시안 생성 → 확인 요청
+  ↓
+사용자: "배포 진행"
+  ↓
+에이전트: Rhymix 게시판 생성 + 배포 → 완료 URL 전달
+```
+
+## 동작 구조
+
+- **n8n** (`n8n-workflow.json`): 채팅 트리거를 받아 `bridge-server.cjs`를 호출하는 오케스트레이션 레이어
+- **bridge-server.cjs**: Claude Code CLI를 `rhymix-gardener` 에이전트 + Stitch MCP 설정으로 실행(spawn)하는 HTTP 브리지. FTP 배포 엔드포인트도 함께 제공
+- **Claude Code CLI + `rhymix-gardener` 에이전트**: 실제 디자인 생성(Stitch MCP 호출)과 Rhymix 변환·배포 작업을 수행하는 두뇌. 이 저장소에는 포함되어 있지 않고, Claude Code가 설치된 환경의 에이전트 정의를 그대로 사용합니다.
+
+이 세 축 중 "지능"에 해당하는 부분은 전부 Claude Code 에이전트 쪽에 있습니다. 이 저장소가 새로 만든 것은 그 앞단(채팅 입력, 실행 트리거, 배포 파일 전송)을 **비밀정보·경로 하드코딩 없이** 재사용 가능하게 만든 것입니다.
+
+## 사전 준비물
+
+- Node.js 18+
+- [n8n](https://n8n.io) (로컬 설치 또는 self-host)
+- [Claude Code CLI](https://docs.claude.com/claude-code) 설치 및 로그인 완료
+- Stitch API 키
+- 대상 Rhymix 사이트의 FTP 계정 정보
+- **로컬에 실제 작업할 안전한 테스트/샌드박스 Rhymix 설치** (운영 사이트를 직접 지정하지 마세요 — 아래 보안 섹션 참고)
+
+## 설정 방법
+
+1. 의존성 설치
+   ```
+   npm install
+   ```
+2. 설정 파일 준비
+   ```
+   copy config.example.json config.json
+   copy .env.example .env
+   ```
+3. `config.json` 값 채우기
+   - `safeDir`: 에이전트가 실제로 수정해도 되는 로컬 Rhymix 경로 (반드시 테스트/샌드박스 환경)
+   - `forbiddenDir`: 절대 건드리면 안 되는 운영 사이트 경로 (안전장치 문구에 명시되어 매 호출마다 강제됨)
+   - `deploySources`: 배포할 로컬 폴더 → 원격 상대경로 매핑 목록
+   - `ftp`: 배포 대상 FTP 호스트/포트/원격 기준경로
+4. `.env` 값 채우기 (절대 커밋 금지)
+   - `FTP_USER`, `FTP_PASSWORD`: 배포 대상 FTP 계정
+   - `STITCH_API_KEY`: Stitch API 키
+   - `BRIDGE_URL`은 n8n 워크플로 쪽에서는 쓰이지 않습니다 (아래 참고). bridge-server.cjs를 직접 호출하는 다른 스크립트를 만들 때만 참고하세요.
+
+## 실행 방법
+
+1. 브리지 서버 실행
+   ```
+   npm start
+   ```
+   `config.json`의 `bridgePort`(기본 3100)로 떠 있어야 합니다.
+2. n8n에서 `n8n-workflow.json`을 Import
+   - n8n은 보안상 워크플로 안에서 `$env` 환경변수 접근을 기본 차단하기 때문에, 이 워크플로의 HTTP Request 노드들은 `http://127.0.0.1:3100`을 고정값으로 직접 적어뒀습니다.
+   - `bridgePort`를 3100이 아닌 다른 값으로 바꿨다면, n8n 워크플로의 "배포 미리보기 호출" / "배포 실행 호출" / "Call Stitch Agent" 노드의 URL 끝부분(`:3100`)도 똑같이 바꿔주세요.
+3. n8n 채팅 UI를 열고 대화 시작
+
+## 보안 주의사항
+
+- `config.json`, `.env`, `mcp-config.json`, `sessions.json`은 전부 `.gitignore`에 등록되어 있습니다. **이 파일들을 외부에 공유하거나 커밋하지 마세요.**
+- `safeDir`는 반드시 실제 운영 중인 사이트가 아닌 별도의 테스트/샌드박스 Rhymix 설치를 가리켜야 합니다. 에이전트에게 매 요청마다 "이 디렉토리 밖은 절대 건드리지 마라"는 안전장치 프롬프트가 강제로 주입되지만, 애초에 안전한 디렉토리만 넘겨주는 것이 1차 방어선입니다.
+- `/deploy-ftp`는 기본적으로 `config.json`에 지정된 호스트 하나에만 올라갑니다. 운영 서버와 테스트 서버를 분리하려면 `config.json`을 서버별로 따로 두고 실행 인스턴스를 나누세요.
+
+## 검증 방법
+
+브리지 서버가 올바르게 떠 있는지, 안전장치가 제대로 주입됐는지 다음으로 확인할 수 있습니다.
+
+```
+curl -X POST http://127.0.0.1:3100/run-agent \
+  -d "{\"prompt\":\"지금 네가 접근 가능한 디렉토리가 어디인지, 그리고 절대 건드리면 안 되는 디렉토리가 어디인지 말해줘\"}"
+```
+
+응답에 `config.json`에 지정한 `safeDir`/`forbiddenDir` 값이 정확히 반영되어 있으면 정상입니다.

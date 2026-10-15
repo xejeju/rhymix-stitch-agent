@@ -1,0 +1,216 @@
+{
+  "name": "Rhymix Stitch 자동화 에이전트",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "mode": "hostedChat",
+        "initialMessages": "안녕하세요! Rhymix 자동 변환 에이전트입니다.\n만들고 싶은 게시판/페이지를 설명해주세요.\n(예: \"동아리 소개 게시판 만들어줘\")\n\n시안을 보여드린 뒤, \"배포\"라고 말하면 배포 미리보기를 보여드리고, \"배포 진행\"이라고 확정하면 실제로 업로드합니다. (config.json의 safeDir로 지정한 테스트/샌드박스 환경에만 적용됩니다)",
+        "options": {}
+      },
+      "id": "chat-trigger-2",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 200],
+      "webhookId": "rhymix-stitch-agent-chat"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "배포 진행",
+              "operator": { "type": "string", "operation": "contains" }
+            },
+            {
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "배포 승인",
+              "operator": { "type": "string", "operation": "contains" }
+            }
+          ],
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "id": "if-deploy-confirm",
+      "name": "배포 확정?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [250, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "배포",
+              "operator": { "type": "string", "operation": "contains" }
+            },
+            {
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "ftp",
+              "operator": { "type": "string", "operation": "contains" }
+            },
+            {
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "업로드",
+              "operator": { "type": "string", "operation": "contains" }
+            }
+          ],
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict", "version": 2 }
+        },
+        "options": {}
+      },
+      "id": "if-deploy-ask",
+      "name": "배포 요청?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [250, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3100/deploy-ftp-preview",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"target\": \"test\" } }}",
+        "options": {}
+      },
+      "id": "call-deploy-preview",
+      "name": "배포 미리보기 호출",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const planned = $json.planned || [];\nconst list = planned.length ? planned.map(p => `- ${p}`).join('\\n') : '(배포할 파일이 없습니다 — config.json의 deploySources를 확인하세요)';\nreturn [{ json: { output: `다음 파일을 배포하려고 합니다 (target: test):\\n${list}\\n\\n이대로 진행하시려면 \"배포 진행\" 이라고 답해주세요.` } }];"
+      },
+      "id": "build-preview-message",
+      "name": "미리보기 메시지 생성",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3100/deploy-ftp",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"target\": \"test\" } }}",
+        "options": {}
+      },
+      "id": "call-deploy-execute",
+      "name": "배포 실행 호출",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const uploaded = $json.uploaded || [];\nconst errors = $json.errors || [];\nlet msg = `배포 완료: ${uploaded.length}개 파일 업로드.`;\nif (errors.length) msg += `\\n오류 ${errors.length}건:\\n` + errors.map(e => `- ${e.file}: ${e.error}`).join('\\n');\nreturn [{ json: { output: msg } }];"
+      },
+      "id": "build-success-message",
+      "name": "배포 완료 메시지 생성",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3100/run-stitch-agent",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"prompt\": $json.chatInput, \"sessionId\": $json.sessionId } }}",
+        "options": {
+          "timeout": 1200000
+        }
+      },
+      "id": "http-request-2",
+      "name": "Call Stitch Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 700]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-2",
+              "name": "output",
+              "type": "string",
+              "value": "={{ $json.stdout }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-output-2",
+      "name": "Shape Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [750, 700]
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          { "node": "배포 확정?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "배포 확정?": {
+      "main": [
+        [
+          { "node": "배포 실행 호출", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "배포 요청?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "배포 요청?": {
+      "main": [
+        [
+          { "node": "배포 미리보기 호출", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Call Stitch Agent", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "배포 미리보기 호출": {
+      "main": [
+        [
+          { "node": "미리보기 메시지 생성", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "배포 실행 호출": {
+      "main": [
+        [
+          { "node": "배포 완료 메시지 생성", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Call Stitch Agent": {
+      "main": [
+        [
+          { "node": "Shape Response", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

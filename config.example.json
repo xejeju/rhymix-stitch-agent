@@ -1,0 +1,24 @@
+{
+  "agentName": "rhymix-gardener",
+  "claudeExePath": "claude",
+  "bridgePort": 3100,
+
+  "safeDir": "C:\\xampp\\htdocs\\sandbox",
+  "safeDbLabel": "rx_sandbox",
+  "forbiddenDir": "C:\\xampp\\htdocs\\rx",
+  "forbiddenDbLabel": "rx (운영 DB)",
+
+  "stitchMcpConfigPath": "./mcp-config.json",
+
+  "deploySources": [
+    { "local": "C:\\xampp\\htdocs\\sandbox\\layouts\\example_layout", "remoteRel": "layouts/example_layout" },
+    { "local": "C:\\xampp\\htdocs\\sandbox\\modules\\board\\skins", "remoteRel": "modules/board/skins", "onlyPrefix": "example_" }
+  ],
+
+  "ftp": {
+    "host": "",
+    "port": 21,
+    "secure": false,
+    "remoteBase": "/www/rx"
+  }
+}
