@@ -16,9 +16,11 @@
 
 - **n8n** (`n8n-workflow.json`): 채팅 트리거를 받아 `bridge-server.cjs`를 호출하는 오케스트레이션 레이어
 - **bridge-server.cjs**: Claude Code CLI를 `rhymix-gardener` 에이전트 + Stitch MCP 설정으로 실행(spawn)하는 HTTP 브리지. FTP 배포 엔드포인트도 함께 제공
-- **Claude Code CLI + `rhymix-gardener` 에이전트**: 실제 디자인 생성(Stitch MCP 호출)과 Rhymix 변환·배포 작업을 수행하는 두뇌. 이 저장소에는 포함되어 있지 않고, Claude Code가 설치된 환경의 에이전트 정의를 그대로 사용합니다.
+- **Claude Code CLI + `rhymix-gardener` 에이전트**: 실제 디자인 생성(Stitch MCP 호출)과 Rhymix 변환·배포 작업을 수행하는 두뇌. 에이전트 정의(`.claude/agents/rhymix-gardener.md`)는 이 저장소에 포함되어 있고, `bridge-server.cjs`가 이 폴더를 작업 디렉토리로 Claude Code를 실행하기 때문에 별도 설치 없이 자동으로 인식됩니다.
 
 이 세 축 중 "지능"에 해당하는 부분은 전부 Claude Code 에이전트 쪽에 있습니다. 이 저장소가 새로 만든 것은 그 앞단(채팅 입력, 실행 트리거, 배포 파일 전송)을 **비밀정보·경로 하드코딩 없이** 재사용 가능하게 만든 것입니다.
+
+> `rhymix-gardener` 에이전트는 Claude Code의 전역 에이전트 목록이 아니라, 이 저장소의 `.claude/agents/` 폴더에서 **프로젝트 범위로** 로드됩니다. Claude Code는 실행된 작업 디렉토리 기준으로 `.claude/agents/`를 자동으로 찾기 때문에, 이 저장소를 clone하고 그 안에서 `bridge-server.cjs`를 실행하기만 하면 됩니다.
 
 ## 사전 준비물
 
