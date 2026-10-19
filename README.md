@@ -61,10 +61,13 @@
 3. `config.json` 값 채우기
    - `safeDir`: 에이전트가 실제로 수정해도 되는 로컬 Rhymix 경로 (반드시 테스트/샌드박스 환경)
    - `forbiddenDir`: 절대 건드리면 안 되는 운영 사이트 경로 (안전장치 문구에 명시되어 매 호출마다 강제됨)
-   - `deploySources`: 배포할 로컬 폴더 → 원격 상대경로 매핑 목록
+   - `deploySources`: 배포할 로컬 폴더 → 원격 상대경로 매핑 목록 (스킨/레이아웃 등 파일 배포용)
    - `ftp`: 배포 대상 FTP 호스트/포트/원격 기준경로
+   - `remote`: DB에 메뉴/게시판을 생성하는 SQL을 원격 실행할 때 쓰는 설정 (`sshHost`/`sshPort`/`mysqlDatabase`/`sqlDir` — `sqlDir`에 있는 `.sql` 파일 중 **가장 최근에 수정된 파일 하나**를 실행합니다)
 4. `.env` 값 채우기 (절대 커밋 금지)
    - `FTP_USER`, `FTP_PASSWORD`: 배포 대상 FTP 계정
+   - `SSH_USER`, `SSH_PASSWORD`: SQL 원격 실행용 SSH 계정 (비워두면 FTP 계정을 그대로 사용 — 카페24 등은 보통 동일)
+   - `MYSQL_USER`, `MYSQL_PASSWORD`: 원격 MySQL 접속 계정 (비워두면 위 SSH 계정을 그대로 사용)
    - `STITCH_API_KEY`: Stitch API 키
    - `BRIDGE_URL`은 n8n 워크플로 쪽에서는 쓰이지 않습니다 (아래 참고). bridge-server.cjs를 직접 호출하는 다른 스크립트를 만들 때만 참고하세요.
 
@@ -85,6 +88,8 @@
 - `config.json`, `.env`, `mcp-config.json`, `sessions.json`은 전부 `.gitignore`에 등록되어 있습니다. **이 파일들을 외부에 공유하거나 커밋하지 마세요.**
 - `safeDir`는 반드시 실제 운영 중인 사이트가 아닌 별도의 테스트/샌드박스 Rhymix 설치를 가리켜야 합니다. 에이전트에게 매 요청마다 "이 디렉토리 밖은 절대 건드리지 마라"는 안전장치 프롬프트가 강제로 주입되지만, 애초에 안전한 디렉토리만 넘겨주는 것이 1차 방어선입니다.
 - `/deploy-ftp`는 기본적으로 `config.json`에 지정된 호스트 하나에만 올라갑니다. 운영 서버와 테스트 서버를 분리하려면 `config.json`을 서버별로 따로 두고 실행 인스턴스를 나누세요.
+- `/deploy-sql`은 `config.remote.sqlDir`에서 가장 최근에 수정된 `.sql` 파일 하나를 그대로 원격 DB에 실행합니다. 에이전트가 만든 SQL은 재실행해도 안전(idempotent)하도록 작성되지만, 실행 전 그 폴더에 의도한 파일만 있는지 한 번 확인하는 걸 권장합니다.
+- **현재 `n8n-workflow.json`은 `/deploy-sql-preview`/`/deploy-sql`을 자동으로 호출하지 않습니다.** 지금은 FTP 배포("배포"/"배포 진행")까지만 채팅으로 연결되어 있고, DB에 메뉴/게시판을 실제로 반영하려면 이 두 엔드포인트를 직접 `curl`로 호출해야 합니다. n8n 워크플로에 같이 묶는 건 추후 과제입니다.
 
 ## 검증 방법
 

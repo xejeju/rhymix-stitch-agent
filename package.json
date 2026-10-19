@@ -9,6 +9,7 @@
   "license": "ISC",
   "dependencies": {
     "basic-ftp": "^5.0.0",
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "ssh2": "^1.17.0"
   }
 }

@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { Client: FtpClient } = require('basic-ftp');
+const { Client: SshClient } = require('ssh2');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 if (!fs.existsSync(CONFIG_PATH)) {
@@ -227,6 +228,75 @@ async function deployToFtp() {
 	return { uploaded, errors };
 }
 
+// SQL deployment: runs the most recently modified *.sql file in config.remote.sqlDir
+// against the remote MySQL database over SSH (mysql CLI on the remote host itself —
+// not a direct DB network connection, which shared hosting rarely allows). SSH/MySQL
+// credentials fall back to the FTP account if not set separately, since most hosts
+// (e.g. cafe24) use one account for everything.
+function loadRemoteCredentials() {
+	const sshUser = process.env.SSH_USER || process.env.FTP_USER || '';
+	const sshPassword = process.env.SSH_PASSWORD || process.env.FTP_PASSWORD || '';
+	return {
+		host: config.remote.sshHost,
+		port: config.remote.sshPort || 22,
+		sshUser,
+		sshPassword,
+		mysqlUser: process.env.MYSQL_USER || sshUser,
+		mysqlPassword: process.env.MYSQL_PASSWORD || sshPassword,
+		mysqlDatabase: config.remote.mysqlDatabase,
+	};
+}
+
+function findLatestSqlFile() {
+	const dir = path.resolve(__dirname, config.remote.sqlDir);
+	if (!fs.existsSync(dir)) return null;
+	const files = fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.sql'));
+	if (!files.length) return null;
+	const withTimes = files.map((f) => {
+		const full = path.join(dir, f);
+		return { file: f, full, mtime: fs.statSync(full).mtimeMs };
+	});
+	withTimes.sort((a, b) => b.mtime - a.mtime);
+	return withTimes[0];
+}
+
+function runRemoteSql(sqlContent) {
+	const creds = loadRemoteCredentials();
+	return new Promise((resolve, reject) => {
+		const conn = new SshClient();
+		conn.on('ready', () => {
+			const cmd = `mysql -u ${creds.mysqlUser} -p'${creds.mysqlPassword}' ${creds.mysqlDatabase}`;
+			conn.exec(cmd, (err, stream) => {
+				if (err) { conn.end(); return reject(err); }
+				let stdout = '';
+				let stderr = '';
+				stream.on('data', (d) => { stdout += d.toString(); });
+				stream.stderr.on('data', (d) => { stderr += d.toString(); });
+				stream.on('close', (code) => {
+					conn.end();
+					resolve({ code, stdout, stderr });
+				});
+				stream.end(sqlContent);
+			});
+		}).on('error', reject).connect({
+			host: creds.host,
+			port: creds.port,
+			username: creds.sshUser,
+			password: creds.sshPassword,
+		});
+	});
+}
+
+async function deployToSql() {
+	const latest = findLatestSqlFile();
+	if (!latest) {
+		return { ran: false, message: `${config.remote.sqlDir}에 실행할 .sql 파일이 없습니다.` };
+	}
+	const sqlContent = fs.readFileSync(latest.full, 'utf8');
+	const result = await runRemoteSql(sqlContent);
+	return { ran: true, file: latest.file, ...result };
+}
+
 function readJsonBody(req, cb) {
 	let body = '';
 	req.on('data', (chunk) => { body += chunk; });
@@ -254,6 +324,38 @@ const server = http.createServer((req, res) => {
 	if (req.method === 'POST' && req.url === '/deploy-ftp') {
 		readJsonBody(req, () => {
 			deployToFtp()
+				.then((result) => {
+					res.writeHead(200, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify(result));
+				})
+				.catch((e) => {
+					res.writeHead(500, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: String(e) }));
+				});
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && req.url === '/deploy-sql-preview') {
+		readJsonBody(req, () => {
+			try {
+				const latest = findLatestSqlFile();
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({
+					file: latest ? latest.file : null,
+					preview: latest ? fs.readFileSync(latest.full, 'utf8').slice(0, 1500) : null,
+				}));
+			} catch (e) {
+				res.writeHead(500, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ error: String(e) }));
+			}
+		});
+		return;
+	}
+
+	if (req.method === 'POST' && req.url === '/deploy-sql') {
+		readJsonBody(req, () => {
+			deployToSql()
 				.then((result) => {
 					res.writeHead(200, { 'Content-Type': 'application/json' });
 					res.end(JSON.stringify(result));

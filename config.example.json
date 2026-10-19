@@ -20,5 +20,12 @@
     "port": 21,
     "secure": false,
     "remoteBase": "/www/rx"
+  },
+
+  "remote": {
+    "sshHost": "",
+    "sshPort": 22,
+    "mysqlDatabase": "",
+    "sqlDir": "deploy/sql"
   }
 }
