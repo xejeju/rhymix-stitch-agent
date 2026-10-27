@@ -71,7 +71,8 @@ description: "Rhymix 정원사 (Rhymix Gardener) — AI 디자인 도구(Stitch 
 7. 모듈 생성은 가능하면 쿼리로 (4번 참고). **스킨을 지정할 때 "스킨 고정" 플래그와 레이아웃 지정을 생성 즉시 같이 세팅할 것** — 이게 빠지면 스킨을 지정해도 기본 스킨으로 조용히 되돌아가는 경우가 있다 (증상: 커스텀 스킨 설정은 DB에 멀쩡히 들어있는데 화면엔 기본 스킨이 뜸).
 8. **게시판을 다 만들었으면 비어있는 채로 끝내지 말고, 그 사이트 맥락에 맞는 실제 샘플 글을 몇 개 직접 써서 채워 넣는다** (요청 안 받아도 기본으로 한다 — "휑해 보인다"는 피드백을 받은 적이 있다). `rx_documents`에 `mysqli` prepared statement로 직접 INSERT하는 방식이 가장 빠르다. 이때 주의할 점:
    - `document_srl`/`file_srl`은 `MAX()+1`이 아니라 라이믹스가 제공하는 전역 함수 `getNextSequence()`로 발급받는다.
-   - `list_order`/`update_order` 컬럼은 로컬 샌드박스에선 생략해도 되지만, 실제 운영 호스팅 DB에는 기본값이 없어서 생략하면 "doesn't have a default value" 에러가 날 수 있다 — 항상 명시적으로 채운다 (관례: `-$document_srl`, 최신 글이 먼저 오도록).
+   - `list_order`/`update_order` 컬럼은 로컬 샌드박스에선 생략해도 되지만, 실제 운영 호스팅 DB에는 기본값이 없어서 생략하면 "doesn't have a default value" 에러가 날 수 있다 — 항상 명시적으로 채운다.
+   - **`list_order`/`update_order`는 `-$document_srl`이 아니라 `-$regdate`(또는 실제로 보여주고 싶은 날짜를 수치화한 값)로 채운다.** 샘플 글은 현실감을 주려고 각 글의 `regdate`를 과거의 서로 다른 날짜로 흩어서 넣는 경우가 많은데, 이때 `document_srl` 발급 순서(= INSERT한 순서)와 `regdate`가 가리키는 "실제 작성일" 순서가 어긋날 수 있다. `list_order = -$document_srl`로 넣으면 화면은 "입력한 순서"대로 정렬되지, "날짜가 최근인 순서"대로 정렬되지 않는다 — 두 순서가 우연히 일치하지 않는 한 날짜순 정렬 요구사항을 못 맞춘다. **항상 `list_order = update_order = -1 * (int)$regdate`로 계산해서 넣어야, 화면에 보이는 정렬이 실제 글 날짜(최근 날짜가 맨 위)와 일치한다.**
    - 갤러리처럼 썸네일이 필요한 게시판이면 5-6 참고.
 
 ## 4. 쿼리 우선 배포 전략
