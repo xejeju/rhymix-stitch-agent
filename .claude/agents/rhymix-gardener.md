@@ -205,6 +205,19 @@ SSH로 파일은 정상적으로 올리고 받아지는데, `conn.exec(...)`로 
 - 결과를 눈으로 확인하고 싶으면 `header('Content-Type: text/plain; charset=utf-8')`로 평문 출력하면 `curl`로 바로 읽기 편하다.
 - 운영(production) 서버에는 이 방법도 함부로 쓰지 않는다 — 어디까지나 이미 승인된 개발/스테이징 호스팅에서, 임시로, 최소한으로만 사용한다.
 
+## 5-11. 위젯 스킨을 복제할 때 "list_type에 해당하는 파일 하나"만 복사하면 안 된다 — `content.html`이 진짜 진입점이고, 거기서 `_tab_none.html` 등을 거쳐 list_type별 파일로 분기한다
+
+PC용 content 위젯(`widget="content"`, `widgetstyle="simple"` 등)도 mcontent와 마찬가지로 **디스패처 파일 체인**을 갖는다: 실제 렌더링은 스킨 폴더의 `content.html`에서 시작해서, `tab_type`에 따라 `_tab_none.html`/`_tab_left.html`/`_tab_top.html`을 include하고, 거기서 다시 `list_type`(`gallery`/`normal`/`image_title` 등)에 맞는 파일을 include하는 구조다. 캐러셀 화살표를 추가하려고 `gallery.html`만 복제해서 새 스킨 폴더(`default_img_arrows` 등)를 만들었더니, 개발 서버에서는 전체 폴더를 통째로 복사해둔 상태였어서 문제가 없었지만, **그 스킨을 운영 서버에 배포할 때 `gallery.html` + 라이브러리 파일(`flickity.js/css`) 세 개만 옮겼더니 화면에 `Template not found: widgets/content/skins/<스킨명>/content.html` 에러 문자열이 그대로 노출됐다** — `content.html`, `_tab_*.html`, `css/`, `js/`, `img/`, `skin.xml` 등 디스패처 체인에 필요한 파일 전부가 있어야 비로소 동작한다.
+
+**교훈:** 위젯 스킨을 복제해서 커스터마이징할 때는 처음부터 **폴더 전체를 통째로 복사**하고, 그중 바꿀 파일(이 경우 `gallery.html`)만 수정한다. "이 list_type 파일 하나만 있으면 되겠지"라고 넘겨짚지 않는다 — 운영 배포 등 다른 환경으로 옮길 때 누락이 드러나므로, 애초에 폴더 단위로 동기화(`downloadToDir`/`uploadFromDir` 등)하는 습관을 들인다.
+
+## 5-12. `rx_modules.content`/`mcontent`를 DB에서 직접 고쳤는데도 화면이 안 바뀐다 — `Rhymix\Framework\Cache`를 다 지워도 소용없을 수 있다, 진짜 범인은 `files/cache/opage/*.cache.php`(페이지 출력 디스크 캐시)일 수 있다
+
+[[5. 캐시 함정 — DB를 직접 고쳤는데 반영이 안 될 때]]에서 다루는 `Rhymix\Framework\Cache`(메모리/파일 키-값 캐시, `site_and_module:mid_info:<module_srl>` 등)를 전부 지우고(`Cache::clearAll()`까지 써봐도) 화면이 그대로인 경우가 있다. 이 캐시 클래스는 드라이버가 `dummy`(요청 간 유지 안 됨)일 수도 있는데, 그래도 안 바뀐다면 **완전히 별개의 정적 파일 캐시**를 의심해야 한다: `files/cache/opage/` 디렉토리에 `<숫자>.always.php.notpl.pc.cache.php` / `...mo.cache.php` 같은 이름으로 **렌더링된 페이지 전체 HTML을 그대로 디스크에 저장해두는 페이지 출력 캐시**가 존재하며, `mtime`을 보면 "항상 캐시"(`always`)라서 DB 내용이 바뀌어도 이 파일이 있는 한 계속 옛날 화면만 서빙된다.
+
+**확인 방법:** `files/cache/opage/` 안의 파일들 `mtime`이 DB를 고친 시점보다 전인지 비교해보면 바로 알 수 있다(또는 그냥 지우고 다시 확인).
+**해결:** 이 디렉토리 안의 캐시 파일을 직접 지우면 된다 — 데이터가 아니라 "렌더링 결과물" 캐시이므로 지워도 안전하고, 다음 요청에서 자동으로 다시 생성된다. 운영 서버에서 콘텐츠/위젯을 바꾼 뒤 화면에 반영이 안 되면, `Rhymix\Framework\Cache` 클리어 → 그래도 안 되면 `files/cache/opage/`(및 필요시 `files/cache/widget/`) 안의 캐시 파일 삭제, 순서로 점검한다.
+
 ## 6. 검증 루틴 (매 파일 작성/수정 후 반드시)
 
 1. 해당 페이지를 HTTP로 직접 요청해서 fatal error / parse error / warning 문자열이 응답에 있는지 확인한다.
